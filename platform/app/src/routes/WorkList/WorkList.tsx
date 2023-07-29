@@ -378,6 +378,7 @@ function WorkList({
                 >
                   {/* TODO revisit the completely rounded style of buttons used for launching a mode from the worklist later - for now use LegacyButton*/}
                   <LegacyButton
+                    name={`mode:${mode.id}`}
                     rounded="full"
                     variant={isValidMode ? 'contained' : 'disabled'}
                     disabled={!isValidMode}

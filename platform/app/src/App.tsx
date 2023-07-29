@@ -28,6 +28,17 @@ import { AppConfigProvider } from '@state';
 import createRoutes from './routes';
 import appInit from './appInit.js';
 import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
+// Connect to nundb
+import { useNunDbFeatureFlagsReRender, connect, startWatchFeatureFlag } from 'nun-db-react';
+
+// Todo update
+connect(
+  React,
+  'wss://ws-staging.nundb.org',
+  'features-ohif-db',
+  'feature-ohif-pwd'
+);
+startWatchFeatureFlag();
 
 let commandsManager: CommandsManager,
   extensionManager: ExtensionManager,
@@ -36,6 +47,8 @@ let commandsManager: CommandsManager,
 
 function App({ config, defaultExtensions, defaultModes }) {
   const [init, setInit] = useState(null);
+
+  useNunDbFeatureFlagsReRender();
   useEffect(() => {
     const run = async () => {
       appInit(config, defaultExtensions, defaultModes)
