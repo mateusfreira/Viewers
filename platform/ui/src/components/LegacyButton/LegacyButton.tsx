@@ -204,6 +204,7 @@ const LegacyButton = ({
       onClick={handleOnClick}
       type={type}
       data-cy={`${name}-btn`}
+      data-feature={`${name}-btn`} 
       {...rest}
     >
       {startIcon}

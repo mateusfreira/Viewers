@@ -56,6 +56,7 @@ const StudyListFilter = ({
                     color="primaryActive"
                     border="primaryActive"
                     className="mx-8"
+                    name="clear-filters"
                     startIcon={<Icon name="cancel" />}
                     onClick={clearFilters}
                   >

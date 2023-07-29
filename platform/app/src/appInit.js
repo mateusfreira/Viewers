@@ -21,7 +21,9 @@ import {
   // utils,
 } from '@ohif/core';
 
+
 import loadModules from './pluginImports';
+
 
 /**
  * @param {object|func} appConfigOrFunc - application configuration, or a function that returns application configuration
