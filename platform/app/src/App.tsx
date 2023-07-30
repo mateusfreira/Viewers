@@ -29,14 +29,20 @@ import createRoutes from './routes';
 import appInit from './appInit.js';
 import OpenIdConnectRoutes from './utils/OpenIdConnectRoutes';
 // Connect to nundb
-import { useNunDbFeatureFlagsReRender, connect, startWatchFeatureFlag } from 'nun-db-react';
+import {
+  useNunDbFeatureFlagsReRender,
+  connect,
+  startWatchFeatureFlag,
+} from 'nun-db-react';
 
 // Todo update
 connect(
   React,
-  'wss://ws-staging.nundb.org',
-  'features-ohif-db',
-  'feature-ohif-pwd'
+  window.config.nunDb.url,
+  window.config.nunDb.db,
+  window.config.nunDb.user,
+  window.config.nunDb.token,
+  true
 );
 startWatchFeatureFlag();
 

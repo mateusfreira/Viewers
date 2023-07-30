@@ -14941,14 +14941,14 @@ number-is-nan@^1.0.0:
   resolved "https://registry.yarnpkg.com/number-is-nan/-/number-is-nan-1.0.1.tgz#097b602b53422a522c1afb8790318336941a011d"
   integrity sha512-4jbtZXNAsfZbAHiiqjLPBiCl16dES1zI4Hpzzxw61Tk+loF+sBDBKx1ICKKKwIqQ7M0mFn1TmkN7euSncWgHiQ==
 
-nun-db-react@^1.0.0:
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/nun-db-react/-/nun-db-react-1.0.0.tgz#a1541f49a754e8e8c085a5c04b6ad04be1d90c47"
-  integrity sha512-q8rPEwZFcA94KMjjAjr/hTnH5UqyckSunZ8gVXy8VUzCrb+nwHpvm5efoJ7AIGxIpExfU/+caDIaExXNOgOrYg==
+nun-db-react@^1.0.3:
+  version "1.0.3"
+  resolved "https://registry.yarnpkg.com/nun-db-react/-/nun-db-react-1.0.3.tgz#8c06e84a8dd76771feca08383b24c8cb83fa59f6"
+  integrity sha512-DlFV2E1xS4zsBNBkuIWEpvXKRkSasf6JMnwr0BAvFNLOptIS8AiiMfGWt7H7GxuXeYzNFtODyj3BFIn+MN91Jg==
   dependencies:
-    nun-db "^1.5.1"
+    nun-db "^1.7.0"
 
-nun-db@^1.5.1:
+nun-db@^1.7.0:
   version "1.7.0"
   resolved "https://registry.yarnpkg.com/nun-db/-/nun-db-1.7.0.tgz#328f4f002138c7382dfa02a306351e8608b6ccfe"
   integrity sha512-dNJMNoUz1214e/wDD1pG6PE5jTlKa1wR93breQzeUrZP543QGcSo+oCpxG7GQnCf/vKtkzC7iytCgutfvcjE/Q==
@@ -15123,7 +15123,7 @@ ohif-aws-healthimaging@^0.6.4:
   version "1.0.0"
   dependencies:
     "@babel/runtime" "7.7.6"
-    nun-db-react "^1.0.0"
+    nun-db-react "^1.0.3"
 
 oidc-client@1.11.5:
   version "1.11.5"

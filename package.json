@@ -58,6 +58,7 @@
     "@babel/runtime": "^7.20.13",
     "@kitware/vtk.js": "27.3.1",
     "core-js": "^3.2.1",
+    "nun-db-react": "^1.0.3",
     "ohif-aws-healthimaging": "^0.6.4",
     "ohif-nun-db": "file:../ohif-nun-db/"
   },
