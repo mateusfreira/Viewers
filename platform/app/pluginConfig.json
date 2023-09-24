@@ -51,6 +51,10 @@
       "packageName": "@ohif/extension-cornerstone-dicom-rt",
       "default": false,
       "version": "3.0.0"
+    },
+    {
+      "packageName": "ohif-nun-db",
+      "version": "1.2.1"
     }
   ],
   "modes": [

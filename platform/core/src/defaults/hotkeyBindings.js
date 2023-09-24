@@ -198,6 +198,18 @@ const bindings = [
   //   label: 'W/L Preset 9',
   //   keys: ['9'],
   // },
+  {
+      commandName: 'enalbeNunDb',
+      label: 'Enable remote control',
+      keys: ['n'],
+      isEditable: true,
+  },
+  {
+      commandName: 'disableNunDb',
+      label: 'Enable remote control',
+      keys: ['u'],
+      isEditable: true,
+  },
 ];
 
 export default bindings;

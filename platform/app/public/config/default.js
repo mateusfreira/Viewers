@@ -183,6 +183,12 @@ window.config = {
       label: 'Zoom',
       keys: ['z'],
     },
+    {
+      commandName: 'enalbeNunDb',
+      label: 'Enable remote control',
+      keys: ['n'],
+      isEditable: true,
+    },
     // ~ Window level presets
     {
       commandName: 'windowLevelPreset1',
@@ -228,6 +234,13 @@ window.config = {
       commandName: 'windowLevelPreset9',
       label: 'W/L Preset 9',
       keys: ['9'],
-    },
+    }
   ],
+  nunDb: {
+    url: 'wss://ws-staging.nundb.org', // Nun-db server address
+    db: 'features-ohif-db',// Nun-db Db instance
+    user: 'client', // Nun-db db user
+    token: 'client-pwd',// Nun-db user token
+    key: 'client-<remote-key>', // Replace this key to a uniq one
+  },
 };
