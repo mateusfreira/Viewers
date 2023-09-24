@@ -230,4 +230,11 @@ window.config = {
       keys: ['9'],
     },
   ],
+  nunDb: {
+    url: 'wss://ws-staging.nundb.org', // Nun-db server address
+    db: 'features-ohif-db',// Nun-db Db instance
+    user: 'client', // Nun-db db user
+    token: 'client-pwd',// Nun-db user token
+    key: 'client-mateusfreira', // Replace this key to a uniq one
+  },
 };
