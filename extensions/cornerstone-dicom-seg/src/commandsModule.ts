@@ -2,21 +2,38 @@ import dcmjs from 'dcmjs';
 import { createReportDialogPrompt } from '@ohif/extension-default';
 import { ServicesManager, Types } from '@ohif/core';
 import { cache, metaData } from '@cornerstonejs/core';
-import { segmentation as cornerstoneToolsSegmentation } from '@cornerstonejs/tools';
-import { adaptersSEG, helpers } from '@cornerstonejs/adapters';
-import { DicomMetadataStore } from '@ohif/core';
+import {
+  segmentation as cornerstoneToolsSegmentation,
+  Enums as cornerstoneToolsEnums,
+  utilities,
+} from '@cornerstonejs/tools';
+import { adaptersRT, helpers, adaptersSEG } from '@cornerstonejs/adapters';
+import { classes, DicomMetadataStore } from '@ohif/core';
+
+import vtkImageMarchingSquares from '@kitware/vtk.js/Filters/General/ImageMarchingSquares';
+import vtkDataArray from '@kitware/vtk.js/Common/Core/DataArray';
+import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
 
 import {
   updateViewportsForSegmentationRendering,
   getUpdatedViewportsForSegmentation,
   getTargetViewport,
 } from './utils/hydrationUtils';
+const { segmentation: segmentationUtils } = utilities;
+
+const { datasetToBlob } = dcmjs.data;
 
 const {
   Cornerstone3D: {
     Segmentation: { generateLabelMaps2DFrom3D, generateSegmentation },
   },
 } = adaptersSEG;
+
+const {
+  Cornerstone3D: {
+    RTSS: { generateRTSSFromSegmentations },
+  },
+} = adaptersRT;
 
 const { downloadDICOMData } = helpers;
 
@@ -30,6 +47,7 @@ const commandsModule = ({
     uiDialogService,
     displaySetService,
     viewportGridService,
+    toolGroupService,
   } = (servicesManager as ServicesManager).services;
 
   const actions = {
@@ -188,6 +206,9 @@ const commandsModule = ({
     loadSegmentationDisplaySetsForViewport: async ({ viewportId, displaySets }) => {
       // Todo: handle adding more than one segmentation
       const displaySet = displaySets[0];
+      const referencedDisplaySet = displaySetService.getDisplaySetByUID(
+        displaySet.referencedDisplaySetInstanceUID
+      );
 
       updateViewportsForSegmentationRendering({
         viewportId,
@@ -203,7 +224,8 @@ const commandsModule = ({
 
           const boundFn = segmentationService[serviceFunction].bind(segmentationService);
           const segmentationId = await boundFn(segDisplaySet, null, suppressEvents);
-
+          const segmentation = segmentationService.getSegmentation(segmentationId);
+          segmentation.description = `S${referencedDisplaySet.SeriesNumber}: ${referencedDisplaySet.SeriesDescription}`;
           return segmentationId;
         },
       });
@@ -348,6 +370,70 @@ const commandsModule = ({
 
       return naturalizedReport;
     },
+    /**
+     * Converts segmentations into RTSS for download.
+     * This sample function retrieves all segentations and passes to
+     * cornerstone tool adapter to convert to DICOM RTSS format. It then
+     * converts dataset to downloadable blob.
+     *
+     */
+    downloadRTSS: ({ segmentationId }) => {
+      const segmentations = segmentationService.getSegmentation(segmentationId);
+      const vtkUtils = {
+        vtkImageMarchingSquares,
+        vtkDataArray,
+        vtkImageData,
+      };
+
+      const RTSS = generateRTSSFromSegmentations(
+        segmentations,
+        classes.MetadataProvider,
+        DicomMetadataStore,
+        cache,
+        cornerstoneToolsEnums,
+        vtkUtils
+      );
+
+      try {
+        const reportBlob = datasetToBlob(RTSS);
+
+        //Create a URL for the binary.
+        const objectUrl = URL.createObjectURL(reportBlob);
+        window.location.assign(objectUrl);
+      } catch (e) {
+        console.warn(e);
+      }
+    },
+    setBrushSize: ({ value, toolNames }) => {
+      const brushSize = Number(value);
+
+      toolGroupService.getToolGroupIds()?.forEach(toolGroupId => {
+        if (toolNames?.length === 0) {
+          segmentationUtils.setBrushSizeForToolGroup(toolGroupId, brushSize);
+        } else {
+          toolNames?.forEach(toolName => {
+            segmentationUtils.setBrushSizeForToolGroup(toolGroupId, brushSize, toolName);
+          });
+        }
+      });
+    },
+    setThresholdRange: ({
+      value,
+      toolNames = ['ThresholdCircularBrush', 'ThresholdSphereBrush'],
+    }) => {
+      toolGroupService.getToolGroupIds()?.forEach(toolGroupId => {
+        const toolGroup = toolGroupService.getToolGroup(toolGroupId);
+        toolNames?.forEach(toolName => {
+          toolGroup.setToolConfiguration(toolName, {
+            strategySpecificConfiguration: {
+              THRESHOLD: {
+                threshold: value,
+              },
+            },
+          });
+        });
+      });
+    },
   };
 
   const definitions = {
@@ -372,11 +458,21 @@ const commandsModule = ({
     storeSegmentation: {
       commandFn: actions.storeSegmentation,
     },
+    downloadRTSS: {
+      commandFn: actions.downloadRTSS,
+    },
+    setBrushSize: {
+      commandFn: actions.setBrushSize,
+    },
+    setThresholdRange: {
+      commandFn: actions.setThresholdRange,
+    },
   };
 
   return {
     actions,
     definitions,
+    defaultContext: 'SEGMENTATION',
   };
 };
 

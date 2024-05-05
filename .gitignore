@@ -24,6 +24,7 @@ yarn-error.log
 .DS_Store
 .env
 *.code-workspace
+.directory
 
 # Common Example Data Directories
 sampledata/
@@ -43,3 +44,5 @@ platform/app/src/pluginImports.js
 platform/app/.recipes/Nginx-Dcm4Che/dcm4che/dcm4che-arc/*
 platform/app/.recipes/OpenResty-Orthanc/logs/*
 .vercel
+
+.vs

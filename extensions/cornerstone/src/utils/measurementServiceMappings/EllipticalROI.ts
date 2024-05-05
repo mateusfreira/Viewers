@@ -1,6 +1,8 @@
 import SUPPORTED_TOOLS from './constants/supportedTools';
+import { getDisplayUnit } from './utils';
 import getSOPInstanceAttributes from './utils/getSOPInstanceAttributes';
 import { utils } from '@ohif/core';
+import { getStatisticDisplayString } from './utils/getValueDisplayString';
 
 const EllipticalROI = {
   toAnnotation: measurement => {},
@@ -8,7 +10,8 @@ const EllipticalROI = {
     csToolsEventDetail,
     displaySetService,
     cornerstoneViewportService,
-    getValueTypeFromToolType
+    getValueTypeFromToolType,
+    customizationService
   ) => {
     const { annotation, viewportId } = csToolsEventDetail;
     const { metadata, data, annotationUID } = annotation;
@@ -42,18 +45,20 @@ const EllipticalROI = {
       displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID);
     }
 
-    const { points } = data.handles;
+    const { points, textBox } = data.handles;
 
     const mappedAnnotations = getMappedAnnotations(annotation, displaySetService);
 
-    const displayText = getDisplayText(mappedAnnotations, displaySet);
-    const getReport = () => _getReport(mappedAnnotations, points, FrameOfReferenceUID);
+    const displayText = getDisplayText(mappedAnnotations, displaySet, customizationService);
+    const getReport = () =>
+      _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService);
 
     return {
       uid: annotationUID,
       SOPInstanceUID,
       FrameOfReferenceUID,
       points,
+      textBox,
       metadata,
       referenceSeriesUID: SeriesInstanceUID,
       referenceStudyUID: StudyInstanceUID,
@@ -123,7 +128,7 @@ This function is used to convert the measurement data to a format that is
 suitable for the report generation (e.g. for the csv report). The report
 returns a list of columns and corresponding values.
 */
-function _getReport(mappedAnnotations, points, FrameOfReferenceUID) {
+function _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService) {
   const columns = [];
   const values = [];
 
@@ -138,13 +143,7 @@ function _getReport(mappedAnnotations, points, FrameOfReferenceUID) {
       return;
     }
 
-    columns.push(
-      `max (${unit})`,
-      `mean (${unit})`,
-      `std (${unit})`,
-      'Area',
-      'Unit'
-    );
+    columns.push(`max (${unit})`, `mean (${unit})`, `std (${unit})`, 'Area', 'Unit');
     values.push(max, mean, stdDev, area, areaUnit);
   });
 
@@ -167,7 +166,7 @@ function _getReport(mappedAnnotations, points, FrameOfReferenceUID) {
   };
 }
 
-function getDisplayText(mappedAnnotations, displaySet) {
+function getDisplayText(mappedAnnotations, displaySet, customizationService) {
   if (!mappedAnnotations || !mappedAnnotations.length) {
     return '';
   }
@@ -188,18 +187,13 @@ function getDisplayText(mappedAnnotations, displaySet) {
   const frameText = displaySet.isMultiFrame ? ` F: ${frameNumber}` : '';
 
   const roundedArea = utils.roundNumber(area, 2);
-  displayText.push(`${roundedArea} ${areaUnit}`);
+  displayText.push(`${roundedArea} ${getDisplayUnit(areaUnit)}`);
 
   // Todo: we need a better UI for displaying all these information
   mappedAnnotations.forEach(mappedAnnotation => {
     const { unit, max, SeriesNumber } = mappedAnnotation;
 
-    let maxStr = '';
-    if (max) {
-      const roundedMax = utils.roundNumber(max, 2);
-      maxStr = `Max: ${roundedMax} <small>${unit}</small> `;
-    }
-
+    const maxStr = getStatisticDisplayString(max, unit, 'max');
     const str = `${maxStr}(S:${SeriesNumber}${instanceText}${frameText})`;
     if (!displayText.includes(str)) {
       displayText.push(str);

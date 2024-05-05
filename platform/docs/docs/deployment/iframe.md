@@ -1,5 +1,5 @@
 ---
-sidebar_position: 7
+sidebar_position: 8
 sidebar_label: iframe
 ---
 
@@ -44,8 +44,10 @@ Download the index.html and the build (against the /ohif/ path) from [here](http
 
 Then run the
 
-```
+```bash
 npx http-server unzipped-folder
+
+# you can use npx serve ./dist -c ../public/serve.json as an alternative to http-server
 ```
 
 You should be able to see

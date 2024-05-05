@@ -25,7 +25,8 @@ function PanelStudyBrowser({
   // doesn't have to have such an intense shape. This works well enough for now.
   // Tabs --> Studies --> DisplaySets --> Thumbnails
   const { StudyInstanceUIDs } = useImageViewer();
-  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
+  const [{ activeViewportId, viewports, isHangingProtocolLayout }, viewportGridService] =
+    useViewportGrid();
   const [activeTabName, setActiveTabName] = useState('primary');
   const [expandedStudyInstanceUIDs, setExpandedStudyInstanceUIDs] = useState([
     ...StudyInstanceUIDs,
@@ -33,7 +34,6 @@ function PanelStudyBrowser({
   const [studyDisplayList, setStudyDisplayList] = useState([]);
   const [displaySets, setDisplaySets] = useState([]);
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
-  const isMounted = useRef(true);
 
   const onDoubleClickThumbnailHandler = displaySetInstanceUID => {
     let updatedViewports = [];
@@ -41,7 +41,8 @@ function PanelStudyBrowser({
     try {
       updatedViewports = hangingProtocolService.getViewportsRequireUpdate(
         viewportId,
-        displaySetInstanceUID
+        displaySetInstanceUID,
+        isHangingProtocolLayout
       );
     } catch (error) {
       console.warn(error);
@@ -120,17 +121,11 @@ function PanelStudyBrowser({
       }
       // When the image arrives, render it and store the result in the thumbnailImgSrcMap
       newImageSrcEntry[dSet.displaySetInstanceUID] = await getImageSrc(imageId);
-      if (!isMounted.current) {
-        return;
-      }
 
       setThumbnailImageSrcMap(prevState => {
         return { ...prevState, ...newImageSrcEntry };
       });
     });
-    return () => {
-      isMounted.current = false;
-    };
   }, [StudyInstanceUIDs, dataSource, displaySetService, getImageSrc]);
 
   // ~~ displaySets

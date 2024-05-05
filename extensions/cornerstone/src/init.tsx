@@ -1,4 +1,4 @@
-import OHIF, { Types } from '@ohif/core';
+import OHIF, { Types, errorHandler } from '@ohif/core';
 import React from 'react';
 
 import * as cornerstone from '@cornerstonejs/core';
@@ -10,12 +10,15 @@ import {
   metaData,
   volumeLoader,
   imageLoadPoolManager,
+  getEnabledElement,
   Settings,
   utilities as csUtilities,
   Enums as csEnums,
 } from '@cornerstonejs/core';
-import { Enums, utilities, ReferenceLinesTool } from '@cornerstonejs/tools';
-import { cornerstoneStreamingImageVolumeLoader } from '@cornerstonejs/streaming-image-volume-loader';
+import {
+  cornerstoneStreamingImageVolumeLoader,
+  cornerstoneStreamingDynamicImageVolumeLoader,
+} from '@cornerstonejs/streaming-image-volume-loader';
 
 import initWADOImageLoader from './initWADOImageLoader';
 import initCornerstoneTools from './initCornerstoneTools';
@@ -28,6 +31,12 @@ import interleaveTopToBottom from './utils/interleaveTopToBottom';
 import initContextMenu from './initContextMenu';
 import initDoubleClick from './initDoubleClick';
 import { CornerstoneServices } from './types';
+import initViewTiming from './utils/initViewTiming';
+import { colormaps } from './utils/colormaps';
+
+import { debounce } from 'lodash';
+
+const { registerColormap } = csUtilities.colormap;
 
 // TODO: Cypress tests are currently grabbing this from the window?
 window.cornerstone = cornerstone;
@@ -39,30 +48,31 @@ export default async function init({
   servicesManager,
   commandsManager,
   extensionManager,
-  configuration,
   appConfig,
 }: Types.Extensions.ExtensionParams): Promise<void> {
+  // Note: this should run first before initializing the cornerstone
+  // DO NOT CHANGE THE ORDER
+  const value = appConfig.useSharedArrayBuffer;
+  let sharedArrayBufferDisabled = false;
+
+  if (value === 'AUTO') {
+    cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.AUTO);
+  } else if (value === 'FALSE' || value === false) {
+    cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.FALSE);
+    sharedArrayBufferDisabled = true;
+  } else {
+    cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.TRUE);
+  }
 
   await cs3DInit({
     rendering: {
-      preferSizeOverAccuracy: Boolean(appConfig.use16BitDataType),
-      useNorm16Texture: Boolean(appConfig.use16BitDataType),
+      preferSizeOverAccuracy: Boolean(appConfig.preferSizeOverAccuracy),
+      useNorm16Texture: Boolean(appConfig.useNorm16Texture),
     },
   });
 
   // For debugging e2e tests that are failing on CI
   cornerstone.setUseCPURendering(Boolean(appConfig.useCPURendering));
-
-  switch (appConfig.useSharedArrayBuffer) {
-    case 'AUTO':
-      cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.AUTO);
-      break;
-    case 'FALSE':
-      cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.FALSE);
-      break;
-    default:
-      cornerstone.setUseSharedArrayBuffer(csEnums.SharedArrayBufferModes.TRUE);
-  }
 
   cornerstone.setConfiguration({
     ...cornerstone.getConfiguration(),
@@ -87,10 +97,8 @@ export default async function init({
     customizationService,
     uiModalService,
     uiNotificationService,
-    cineService,
     cornerstoneViewportService,
     hangingProtocolService,
-    toolGroupService,
     viewportGridService,
     stateSyncService,
   } = servicesManager.services as CornerstoneServices;
@@ -99,10 +107,15 @@ export default async function init({
   window.extensionManager = extensionManager;
   window.commandsManager = commandsManager;
 
-  if (appConfig.showWarningMessageForCrossOrigin && !window.crossOriginIsolated) {
+  if (
+    appConfig.showWarningMessageForCrossOrigin &&
+    !window.crossOriginIsolated &&
+    !sharedArrayBufferDisabled
+  ) {
     uiNotificationService.show({
       title: 'Cross Origin Isolation',
-      message: 'Cross Origin Isolation is not enabled, volume rendering will not work (e.g., MPR)',
+      message:
+        'Cross Origin Isolation is not enabled, read more about it here: https://docs.ohif.org/faq/',
       type: 'warning',
     });
   }
@@ -114,6 +127,9 @@ export default async function init({
   // Stores a map from `lutPresentationId` to a Presentation object so that
   // an OHIFCornerstoneViewport can be redisplayed with the same LUT
   stateSyncService.register('lutPresentationStore', { clearOnModeExit: true });
+
+  // Stores synchronizers state to be restored
+  stateSyncService.register('synchronizersStore', { clearOnModeExit: true });
 
   // Stores a map from `positionPresentationId` to a Presentation object so that
   // an OHIFCornerstoneViewport can be redisplayed with the same position
@@ -130,7 +146,7 @@ export default async function init({
   const labelmapRepresentation = cornerstoneTools.Enums.SegmentationRepresentations.Labelmap;
 
   cornerstoneTools.segmentation.config.setGlobalRepresentationConfig(labelmapRepresentation, {
-    fillAlpha: 0.3,
+    fillAlpha: 0.5,
     fillAlphaInactive: 0.2,
     outlineOpacity: 1,
     outlineOpacityInactive: 0.65,
@@ -141,6 +157,11 @@ export default async function init({
   volumeLoader.registerVolumeLoader(
     'cornerstoneStreamingImageVolume',
     cornerstoneStreamingImageVolumeLoader
+  );
+
+  volumeLoader.registerVolumeLoader(
+    'cornerstoneStreamingDynamicImageVolume',
+    cornerstoneStreamingDynamicImageVolumeLoader
   );
 
   hangingProtocolService.registerImageLoadStrategy('interleaveCenter', interleaveCenterLoader);
@@ -166,7 +187,7 @@ export default async function init({
   /* Measurement Service */
   this.measurementServiceSource = connectToolsToMeasurementService(servicesManager);
 
-  initCineService(cineService);
+  initCineService(servicesManager);
 
   // When a custom image load is performed, update the relevant viewports
   hangingProtocolService.subscribe(
@@ -190,6 +211,16 @@ export default async function init({
     }
   );
 
+  // resize the cornerstone viewport service when the grid size changes
+  // IMPORTANT: this should happen outside of the OHIFCornerstoneViewport
+  // since it will trigger a rerender of each viewport and each resizing
+  // the offscreen canvas which would result in a performance hit, this should
+  // done only once per grid resize here. Doing it once here, allows us to reduce
+  // the refreshRage(in ms) to 10 from 50. I tried with even 1 or 5 ms it worked fine
+  viewportGridService.subscribe(viewportGridService.EVENTS.GRID_SIZE_CHANGED, () => {
+    cornerstoneViewportService.resize(true);
+  });
+
   initContextMenu({
     cornerstoneViewportService,
     customizationService,
@@ -201,46 +232,40 @@ export default async function init({
     commandsManager,
   });
 
-  const newStackCallback = evt => {
-    const { element } = evt.detail;
-    utilities.stackPrefetch.enable(element);
+  /**
+   * Runs error handler for failed requests.
+   * @param event
+   */
+  const imageLoadFailedHandler = ({ detail }) => {
+    const handler = errorHandler.getHTTPErrorHandler();
+    handler(detail.error);
   };
 
-  const resetCrosshairs = evt => {
+  eventTarget.addEventListener(EVENTS.STACK_VIEWPORT_NEW_STACK, evt => {
     const { element } = evt.detail;
-    const { viewportId, renderingEngineId } = cornerstone.getEnabledElement(element);
-
-    const toolGroup = cornerstoneTools.ToolGroupManager.getToolGroupForViewport(
-      viewportId,
-      renderingEngineId
-    );
-
-    if (!toolGroup || !toolGroup._toolInstances?.['Crosshairs']) {
-      return;
-    }
-
-    const mode = toolGroup._toolInstances['Crosshairs'].mode;
-
-    if (mode === Enums.ToolModes.Active) {
-      toolGroup.setToolActive('Crosshairs');
-    } else if (mode === Enums.ToolModes.Passive) {
-      toolGroup.setToolPassive('Crosshairs');
-    } else if (mode === Enums.ToolModes.Enabled) {
-      toolGroup.setToolEnabled('Crosshairs');
-    }
-  };
+    cornerstoneTools.utilities.stackContextPrefetch.enable(element);
+  });
+  eventTarget.addEventListener(EVENTS.IMAGE_LOAD_FAILED, imageLoadFailedHandler);
+  eventTarget.addEventListener(EVENTS.IMAGE_LOAD_ERROR, imageLoadFailedHandler);
 
   function elementEnabledHandler(evt) {
     const { element } = evt.detail;
-    element.addEventListener(EVENTS.CAMERA_RESET, resetCrosshairs);
 
-    eventTarget.addEventListener(EVENTS.STACK_VIEWPORT_NEW_STACK, newStackCallback);
+    element.addEventListener(EVENTS.CAMERA_RESET, evt => {
+      const { element } = evt.detail;
+      const { viewportId } = getEnabledElement(element);
+      commandsManager.runCommand('resetCrosshairs', { viewportId });
+    });
+
+    // eventTarget.addEventListener(EVENTS.STACK_VIEWPORT_NEW_STACK, toolbarEventListener);
+
+    initViewTiming({ element });
   }
 
   function elementDisabledHandler(evt) {
     const { element } = evt.detail;
 
-    element.removeEventListener(EVENTS.CAMERA_RESET, resetCrosshairs);
+    // element.removeEventListener(EVENTS.CAMERA_RESET, resetCrosshairs);
 
     // TODO - consider removing the callback when all elements are gone
     // eventTarget.removeEventListener(
@@ -252,36 +277,19 @@ export default async function init({
   eventTarget.addEventListener(EVENTS.ELEMENT_ENABLED, elementEnabledHandler.bind(null));
 
   eventTarget.addEventListener(EVENTS.ELEMENT_DISABLED, elementDisabledHandler.bind(null));
+  colormaps.forEach(registerColormap);
 
-  viewportGridService.subscribe(
-    viewportGridService.EVENTS.ACTIVE_VIEWPORT_ID_CHANGED,
-    ({ viewportId }) => {
-      const toolGroup = toolGroupService.getToolGroupForViewport(viewportId);
-
-      if (!toolGroup || !toolGroup._toolInstances?.['ReferenceLines']) {
-        return;
-      }
-
-      // check if reference lines are active
-      const referenceLinesEnabled =
-        toolGroup._toolInstances['ReferenceLines'].mode === Enums.ToolModes.Enabled;
-
-      if (!referenceLinesEnabled) {
-        return;
-      }
-
-      toolGroup.setToolConfiguration(
-        ReferenceLinesTool.toolName,
-        {
-          sourceViewportId: viewportId,
-        },
-        true // overwrite
-      );
-
-      // make sure to set it to enabled again since we want to recalculate
-      // the source-target lines
-      toolGroup.setToolEnabled(ReferenceLinesTool.toolName);
-    }
+  // Event listener
+  eventTarget.addEventListenerDebounced(
+    EVENTS.ERROR_EVENT,
+    ({ detail }) => {
+      uiNotificationService.show({
+        title: detail.type,
+        message: detail.message,
+        type: 'error',
+      });
+    },
+    1000
   );
 }
 

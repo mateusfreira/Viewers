@@ -3,6 +3,7 @@ import { annotation } from '@cornerstonejs/tools';
 import SUPPORTED_TOOLS from './constants/supportedTools';
 import getSOPInstanceAttributes from './utils/getSOPInstanceAttributes';
 import { utils } from '@ohif/core';
+import { getDisplayUnit } from './utils';
 
 const Bidirectional = {
   toAnnotation: measurement => {},
@@ -10,7 +11,8 @@ const Bidirectional = {
     csToolsEventDetail,
     displaySetService,
     cornerstoneViewportService,
-    getValueTypeFromToolType
+    getValueTypeFromToolType,
+    customizationService
   ) => {
     const { annotation, viewportId } = csToolsEventDetail;
     const { metadata, data, annotationUID } = annotation;
@@ -44,18 +46,20 @@ const Bidirectional = {
       displaySet = displaySetService.getDisplaySetsForSeries(SeriesInstanceUID);
     }
 
-    const { points } = data.handles;
+    const { points, textBox } = data.handles;
 
     const mappedAnnotations = getMappedAnnotations(annotation, displaySetService);
 
-    const displayText = getDisplayText(mappedAnnotations, displaySet);
-    const getReport = () => _getReport(mappedAnnotations, points, FrameOfReferenceUID);
+    const displayText = getDisplayText(mappedAnnotations, displaySet, customizationService);
+    const getReport = () =>
+      _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService);
 
     return {
       uid: annotationUID,
       SOPInstanceUID,
       FrameOfReferenceUID,
       points,
+      textBox,
       metadata,
       referenceSeriesUID: SeriesInstanceUID,
       referenceStudyUID: StudyInstanceUID,
@@ -120,7 +124,7 @@ This function is used to convert the measurement data to a format that is
 suitable for the report generation (e.g. for the csv report). The report
 returns a list of columns and corresponding values.
 */
-function _getReport(mappedAnnotations, points, FrameOfReferenceUID) {
+function _getReport(mappedAnnotations, points, FrameOfReferenceUID, customizationService) {
   const columns = [];
   const values = [];
 
@@ -153,7 +157,7 @@ function _getReport(mappedAnnotations, points, FrameOfReferenceUID) {
   };
 }
 
-function getDisplayText(mappedAnnotations, displaySet) {
+function getDisplayText(mappedAnnotations, displaySet, customizationService) {
   if (!mappedAnnotations || !mappedAnnotations.length) {
     return '';
   }
@@ -161,14 +165,7 @@ function getDisplayText(mappedAnnotations, displaySet) {
   const displayText = [];
 
   // Area is the same for all series
-  const {
-    length,
-    width,
-    unit,
-    SeriesNumber,
-    SOPInstanceUID,
-    frameNumber,
-  } = mappedAnnotations[0];
+  const { length, width, unit, SeriesNumber, SOPInstanceUID, frameNumber } = mappedAnnotations[0];
   const roundedLength = utils.roundNumber(length, 2);
   const roundedWidth = utils.roundNumber(width, 2);
 
@@ -183,9 +180,9 @@ function getDisplayText(mappedAnnotations, displaySet) {
   const frameText = displaySet.isMultiFrame ? ` F: ${frameNumber}` : '';
 
   displayText.push(
-    `L: ${roundedLength} ${unit} (S: ${SeriesNumber}${instanceText}${frameText})`
+    `L: ${roundedLength} ${getDisplayUnit(unit)} (S: ${SeriesNumber}${instanceText}${frameText})`
   );
-  displayText.push(`W: ${roundedWidth} ${unit}`);
+  displayText.push(`W: ${roundedWidth} ${getDisplayUnit(unit)}`);
 
   return displayText;
 }

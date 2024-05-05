@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import { ServicesManager, ExtensionManager, CommandsManager, DicomMetadataStore } from '@ohif/core';
-import { MeasurementTable, Icon, ButtonGroup, Button } from '@ohif/ui';
+import { MeasurementTable } from '@ohif/ui';
 import { withTranslation, WithTranslation } from 'react-i18next';
 import { EVENTS as MicroscopyEvents } from '../../services/MicroscopyService';
 import dcmjs from 'dcmjs';
-import styles from '../../utils/styles';
 import callInputDialog from '../../utils/callInputDialog';
 import constructSR from '../../utils/constructSR';
 import { saveByteArray } from '../../utils/saveByteArray';
@@ -76,8 +75,8 @@ function MicroscopyPanel(props: IMicroscopyPanelProps) {
   const { uiDialogService, displaySetService } = servicesManager.services;
 
   useEffect(() => {
-    const viewport = props.viewports[props.activeViewportId];
-    if (viewport.displaySetInstanceUIDs[0]) {
+    const viewport = props.viewports.get(props.activeViewportId);
+    if (viewport?.displaySetInstanceUIDs[0]) {
       const displaySet = displaySetService.getDisplaySetByUID(viewport.displaySetInstanceUIDs[0]);
       if (displaySet) {
         setStudyInstanceUID(displaySet.StudyInstanceUID);
@@ -213,7 +212,7 @@ function MicroscopyPanel(props: IMicroscopyPanelProps) {
         }
         onSaveComplete({
           title: 'SR Saved',
-          meassage: 'Measurements downloaded successfully',
+          message: 'Measurements downloaded successfully',
           type: 'success',
         });
       } else {
@@ -286,6 +285,11 @@ function MicroscopyPanel(props: IMicroscopyPanelProps) {
     props.commandsManager.runCommand('setLabel', { uid }, 'MICROSCOPY');
   };
 
+  const onMeasurementDeleteHandler = ({ uid, isActive }: { uid: string; isActive: boolean }) => {
+    const roiAnnotation = microscopyService.getAnnotation(uid);
+    microscopyService.removeAnnotation(roiAnnotation);
+  };
+
   // Convert ROI annotations managed by microscopyService into our
   // own format for display
   const data = roiAnnotations.map((roiAnnotation, index) => {
@@ -322,8 +326,6 @@ function MicroscopyPanel(props: IMicroscopyPanelProps) {
     };
   });
 
-  const disabled = data.length === 0;
-
   return (
     <>
       <div
@@ -336,6 +338,7 @@ function MicroscopyPanel(props: IMicroscopyPanelProps) {
           data={data}
           onClick={onMeasurementItemClickHandler}
           onEdit={onMeasurementItemEditHandler}
+          onDelete={onMeasurementDeleteHandler}
         />
       </div>
     </>

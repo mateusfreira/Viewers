@@ -68,12 +68,15 @@ class MetadataProvider {
 
     if (!instance) {
       return;
-  }
+    }
 
     return (frameNumber && combineFrameInstance(frameNumber, instance)) || instance;
   }
 
   get(query, imageId, options = { fallback: false }) {
+    if (Array.isArray(imageId)) {
+      return;
+    }
     const instance = this._getInstance(imageId);
 
     if (query === INSTANCE) {
@@ -118,16 +121,15 @@ class MetadataProvider {
    * Adds a new handler for the given tag.  The handler will be provided an
    * instance object that it can read values from.
    */
-  public addHandler(
-    wadoImageLoaderTag: string,
-    handler
-  ) {
+  public addHandler(wadoImageLoaderTag: string, handler) {
     WADO_IMAGE_LOADER[wadoImageLoaderTag] = handler;
   }
 
   _getCornerstoneDICOMImageLoaderTag(wadoImageLoaderTag, instance) {
     let metadata = WADO_IMAGE_LOADER[wadoImageLoaderTag]?.(instance);
-    if (metadata) return metadata;
+    if (metadata) {
+      return metadata;
+    }
 
     switch (wadoImageLoaderTag) {
       case WADO_IMAGE_LOADER_TAGS.GENERAL_SERIES_MODULE:
@@ -239,6 +241,12 @@ class MetadataProvider {
           sopInstanceUID: instance.SOPInstanceUID,
         };
         break;
+      case WADO_IMAGE_LOADER_TAGS.PET_IMAGE_MODULE:
+        metadata = {
+          frameReferenceTime: instance.FrameReferenceTime,
+          actualFrameDuration: instance.ActualFrameDuration,
+        };
+        break;
       case WADO_IMAGE_LOADER_TAGS.PET_ISOTOPE_MODULE:
         const { RadiopharmaceuticalInformationSequence } = instance;
 
@@ -291,12 +299,42 @@ class MetadataProvider {
           const ROIStandardDeviationTag = `${groupStr}1303`;
           const OverlayOrigin = instance[OverlayOriginTag];
 
+          let rows = 0;
+          if (instance[OverlayRowsTag] instanceof Array) {
+            // The DICOM VR for overlay rows is US (unsigned short).
+            const rowsInt16Array = new Uint16Array(instance[OverlayRowsTag][0]);
+            rows = rowsInt16Array[0];
+          } else {
+            rows = instance[OverlayRowsTag];
+          }
+
+          let columns = 0;
+          if (instance[OverlayColumnsTag] instanceof Array) {
+            // The DICOM VR for overlay columns is US (unsigned short).
+            const columnsInt16Array = new Uint16Array(instance[OverlayColumnsTag][0]);
+            columns = columnsInt16Array[0];
+          } else {
+            columns = instance[OverlayColumnsTag];
+          }
+
+          let x = 0;
+          let y = 0;
+          if (OverlayOrigin.length === 1) {
+            // The DICOM VR for overlay origin is SS (signed short) with a multiplicity of 2.
+            const originInt16Array = new Int16Array(OverlayOrigin[0]);
+            x = originInt16Array[0];
+            y = originInt16Array[1];
+          } else {
+            x = OverlayOrigin[0];
+            y = OverlayOrigin[1];
+          }
+
           const overlay = {
-            rows: instance[OverlayRowsTag],
-            columns: instance[OverlayColumnsTag],
+            rows: rows,
+            columns: columns,
             type: instance[OverlayType],
-            x: OverlayOrigin[0],
-            y: OverlayOrigin[1],
+            x,
+            y,
             pixelData: OverlayData,
             description: instance[OverlayDescriptionTag],
             label: instance[OverlayLabelTag],
@@ -331,7 +369,7 @@ class MetadataProvider {
 
       case WADO_IMAGE_LOADER_TAGS.GENERAL_IMAGE_MODULE:
         metadata = {
-          sopInstanceUid: instance.SOPInstanceUID,
+          sopInstanceUID: instance.SOPInstanceUID,
           instanceNumber: toNumber(instance.InstanceNumber),
           lossyImageCompression: instance.LossyImageCompression,
           lossyImageCompressionRatio: instance.LossyImageCompressionRatio,
@@ -359,6 +397,41 @@ class MetadataProvider {
           correctedImage: instance.CorrectedImage,
           units: instance.Units,
           decayCorrection: instance.DecayCorrection,
+        };
+        break;
+      case WADO_IMAGE_LOADER_TAGS.CALIBRATION_MODULE:
+        // map the DICOM tags to the cornerstone tags since cornerstone tags
+        // are camelCase and instance tags are all caps
+        metadata = {
+          sequenceOfUltrasoundRegions: instance.SequenceOfUltrasoundRegions?.map(region => {
+            return {
+              regionSpatialFormat: region.RegionSpatialFormat,
+              regionDataType: region.RegionDataType,
+              regionFlags: region.RegionFlags,
+              regionLocationMinX0: region.RegionLocationMinX0,
+              regionLocationMinY0: region.RegionLocationMinY0,
+              regionLocationMaxX1: region.RegionLocationMaxX1,
+              regionLocationMaxY1: region.RegionLocationMaxY1,
+              referencePixelX0: region.ReferencePixelX0,
+              referencePixelY0: region.ReferencePixelY0,
+              referencePixelPhysicalValueX: region.ReferencePixelPhysicalValueX,
+              referencePixelPhysicalValueY: region.ReferencePixelPhysicalValueY,
+              physicalUnitsXDirection: region.PhysicalUnitsXDirection,
+              physicalUnitsYDirection: region.PhysicalUnitsYDirection,
+              physicalDeltaX: region.PhysicalDeltaX,
+              physicalDeltaY: region.PhysicalDeltaY,
+            };
+          }),
+        };
+        break;
+
+      /**
+       * Below are the tags and not the modules since they are not really
+       * consistent with the modules above
+       */
+      case 'temporalPositionIdentifier':
+        metadata = {
+          temporalPositionIdentifier: instance.TemporalPositionIdentifier,
         };
         break;
 
@@ -444,7 +517,7 @@ class MetadataProvider {
     imageURI = imageURI.split('&frame=')[0];
 
     const uids = this.imageURIToUIDs.get(imageURI);
-    let frameNumber = this.getFrameInformationFromURL(imageId) || '1';
+    const frameNumber = this.getFrameInformationFromURL(imageId) || '1';
 
     if (uids && frameNumber !== undefined) {
       return { ...uids, frameNumber };
@@ -489,9 +562,7 @@ const WADO_IMAGE_LOADER = {
       imageOrientationPatient: toNumber(ImageOrientationPatient),
       rowCosines: toNumber(rowCosines || [0, 1, 0]),
       columnCosines: toNumber(columnCosines || [0, 0, -1]),
-      imagePositionPatient: toNumber(
-        instance.ImagePositionPatient || [0, 0, 0]
-      ),
+      imagePositionPatient: toNumber(instance.ImagePositionPatient || [0, 0, 0]),
       sliceThickness: toNumber(instance.SliceThickness),
       sliceLocation: toNumber(instance.SliceLocation),
       pixelSpacing: toNumber(PixelSpacing || 1),
@@ -509,6 +580,7 @@ const WADO_IMAGE_LOADER_TAGS = {
   VOI_LUT_MODULE: 'voiLutModule',
   MODALITY_LUT_MODULE: 'modalityLutModule',
   SOP_COMMON_MODULE: 'sopCommonModule',
+  PET_IMAGE_MODULE: 'petImageModule',
   PET_ISOTOPE_MODULE: 'petIsotopeModule',
   PER_SERIES_MODULE: 'petSeriesModule',
   OVERLAY_PLANE_MODULE: 'overlayPlaneModule',
@@ -519,6 +591,7 @@ const WADO_IMAGE_LOADER_TAGS = {
   GENERAL_IMAGE_MODULE: 'generalImageModule',
   GENERAL_STUDY_MODULE: 'generalStudyModule',
   CINE_MODULE: 'cineModule',
+  CALIBRATION_MODULE: 'calibrationModule',
 };
 
 const INSTANCE = 'instance';
